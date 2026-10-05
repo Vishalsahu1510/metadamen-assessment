@@ -1,0 +1,26 @@
+{
+  "name": "vaani-interview-intelligence",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "VAANI™ — Adaptive AI Interview & Assessment Intelligence for MetaDamen Internship Assignment",
+  "scripts": {
+    "dev": "node start.js",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=backend && npm run build --workspace=frontend"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "keywords": [
+    "ai-interview",
+    "adaptive-assessment",
+    "llm",
+    "nlp",
+    "metadamen",
+    "vaani"
+  ],
+  "author": "MetaDamen AI Application Assignment",
+  "license": "MIT"
+}
