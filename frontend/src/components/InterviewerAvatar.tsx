@@ -34,6 +34,8 @@ export const InterviewerAvatar: React.FC<Props> = ({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const previousTextRef = useRef<string>('');
+  const isMountedRef = useRef<boolean>(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Eye blinking loop (natural 3-4s blinks)
   useEffect(() => {
@@ -45,7 +47,7 @@ export const InterviewerAvatar: React.FC<Props> = ({
     return () => clearInterval(blinkInterval);
   }, []);
 
-  // Voice options
+  // Voice options (Azure Neural Voices via EdgeTTS)
   const voices = [
     { id: 'en-US-AvaNeural', name: 'Ava (US Female - Natural)' },
     { id: 'en-US-AndrewNeural', name: 'Andrew (US Male - Professional)' },
@@ -60,31 +62,41 @@ export const InterviewerAvatar: React.FC<Props> = ({
       if (autoSpeak) {
         // Small delay to allow component mounting
         const timer = setTimeout(() => {
-          speakQuestion(textToSpeak);
+          if (isMountedRef.current) {
+            speakQuestion(textToSpeak);
+          }
         }, 400);
         return () => clearTimeout(timer);
       }
     }
   }, [textToSpeak, questionNumber, autoSpeak]);
 
-  // Clean up audio on unmount
+  // Clean up and immediately silence audio on unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       stopAudio();
     };
   }, []);
 
   const stopAudio = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     if (audioRef.current) {
       audioRef.current.pause();
+      audioRef.current.currentTime = 0;
       audioRef.current.src = '';
       audioRef.current = null;
     }
-    if (window.speechSynthesis) {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
     setIsPlaying(false);
     setMouthOpen(0);
@@ -94,23 +106,39 @@ export const InterviewerAvatar: React.FC<Props> = ({
   const speakQuestion = async (text: string) => {
     stopAudio();
 
-    if (!text || text.trim().length === 0) return;
+    if (!text || text.trim().length === 0 || !isMountedRef.current) return;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       setIsPlaying(true);
 
-      // Call backend EdgeTTS neural voice endpoint
+      // Exclusively call backend Azure Neural Voice endpoint
       const response = await fetch('/api/audio/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, voice: selectedVoice }),
+        signal: controller.signal,
       });
 
+      if (!isMountedRef.current) {
+        stopAudio();
+        return;
+      }
+
       if (!response.ok) {
-        throw new Error('Neural TTS failed, falling back to browser voice');
+        console.warn('Azure Neural TTS request failed with status:', response.status);
+        setIsPlaying(false);
+        return;
       }
 
       const blob = await response.blob();
+      if (!isMountedRef.current) {
+        stopAudio();
+        return;
+      }
+
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
@@ -130,7 +158,7 @@ export const InterviewerAvatar: React.FC<Props> = ({
 
           const dataArray = new Uint8Array(analyser.frequencyBinCount);
           const updateLipSync = () => {
-            if (!analyserRef.current || !audioRef.current || audioRef.current.paused) {
+            if (!analyserRef.current || !audioRef.current || audioRef.current.paused || !isMountedRef.current) {
               setMouthOpen(0);
               setAudioLevel(0);
               return;
@@ -151,7 +179,7 @@ export const InterviewerAvatar: React.FC<Props> = ({
       } catch (audioCtxErr) {
         // Fallback procedural mouth oscillation if Web Audio API is restricted
         const interval = setInterval(() => {
-          if (!audioRef.current || audioRef.current.paused) {
+          if (!audioRef.current || audioRef.current.paused || !isMountedRef.current) {
             clearInterval(interval);
             setMouthOpen(0);
           } else {
@@ -168,52 +196,29 @@ export const InterviewerAvatar: React.FC<Props> = ({
       };
 
       audio.onerror = () => {
-        fallbackBrowserSpeech(text);
+        console.warn('Audio element error during playback');
+        setIsPlaying(false);
+        setMouthOpen(0);
+        setAudioLevel(0);
       };
 
-      await audio.play();
-    } catch (err) {
-      console.warn('Backend EdgeTTS unavailable, falling back to browser speech synthesis:', err);
-      fallbackBrowserSpeech(text);
+      if (isMountedRef.current) {
+        await audio.play();
+      } else {
+        stopAudio();
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        // Cleanly aborted on navigation / stop
+        return;
+      }
+      console.warn('Azure Neural TTS error:', err);
+      if (isMountedRef.current) {
+        setIsPlaying(false);
+        setMouthOpen(0);
+        setAudioLevel(0);
+      }
     }
-  };
-
-  const fallbackBrowserSpeech = (text: string) => {
-    if (!('speechSynthesis' in window)) {
-      setIsPlaying(false);
-      return;
-    }
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-
-    utterance.onstart = () => {
-      setIsPlaying(true);
-      const interval = setInterval(() => {
-        if (!window.speechSynthesis.speaking) {
-          clearInterval(interval);
-          setMouthOpen(0);
-          setAudioLevel(0);
-        } else {
-          setMouthOpen(Math.random() * 0.7 + 0.3);
-          setAudioLevel(Math.random());
-        }
-      }, 130);
-    };
-
-    utterance.onend = () => {
-      setIsPlaying(false);
-      setMouthOpen(0);
-      setAudioLevel(0);
-    };
-
-    utterance.onerror = () => {
-      setIsPlaying(false);
-      setMouthOpen(0);
-      setAudioLevel(0);
-    };
-
-    window.speechSynthesis.speak(utterance);
   };
 
   // Determine current active status text

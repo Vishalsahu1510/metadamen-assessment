@@ -38,6 +38,13 @@ export const App: React.FC = () => {
       });
   }, []);
 
+  // Silence any speech when navigating away from interview view
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  }, [currentView]);
+
   // Start new interview session
   const handleStartInterview = async (profile: CandidateProfile) => {
     try {
@@ -64,6 +71,9 @@ export const App: React.FC = () => {
       setLastEvaluation(res.evaluation);
 
       if (res.completed && res.finalReport) {
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
         setFinalReport(res.finalReport);
         setCurrentView('report');
       }
@@ -80,6 +90,9 @@ export const App: React.FC = () => {
     try {
       setIsLoading(true);
       const res = await api.completeSession(activeSession.id);
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
       setActiveSession(res.session);
       setFinalReport(res.finalReport);
       setCurrentView('report');
@@ -92,6 +105,9 @@ export const App: React.FC = () => {
 
   // Select past session from history
   const handleSelectHistorySession = (session: InterviewSession) => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
     setActiveSession(session);
     if (session.finalReport) {
       setFinalReport(session.finalReport);
@@ -103,6 +119,9 @@ export const App: React.FC = () => {
 
   // Restart / New Interview
   const handleRestart = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
     setActiveSession(null);
     setFinalReport(null);
     setLastEvaluation(null);

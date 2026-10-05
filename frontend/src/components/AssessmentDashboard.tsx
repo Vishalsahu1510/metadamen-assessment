@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AssessmentReport, InterviewSession } from '../types';
 import {
   CheckCircle2,
@@ -36,6 +36,13 @@ interface Props {
 
 export const AssessmentDashboard: React.FC<Props> = ({ session, report, onRestart }) => {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
+  // Guarantee absolute silence for any queued or active speech upon entering Report
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  }, []);
 
   const getRecommendationBadge = (recommendation: string) => {
     switch (recommendation) {

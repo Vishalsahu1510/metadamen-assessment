@@ -10,7 +10,6 @@ import {
   Mic,
   MicOff,
   Volume2,
-  VolumeX,
   Clock,
   Sparkles,
   Award,
@@ -40,7 +39,6 @@ export const LiveInterviewRoom: React.FC<Props> = ({
   const [answerText, setAnswerText] = useState('');
   const [interimText, setInterimText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const recognitionRef = useRef<any>(null);
   const shouldBeRecordingRef = useRef<boolean>(false);
@@ -53,6 +51,21 @@ export const LiveInterviewRoom: React.FC<Props> = ({
       setElapsedSeconds((prev) => prev + 1);
     }, 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  // Stop recording and cancel any residual speech on unmount
+  useEffect(() => {
+    return () => {
+      shouldBeRecordingRef.current = false;
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (_) {}
+      }
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
   }, []);
 
   // Web Speech API: Continuous Speech-to-Text Engine
@@ -179,26 +192,6 @@ export const LiveInterviewRoom: React.FC<Props> = ({
     }
   };
 
-  // Text-to-Speech: VAANI Interviewer Voice
-  const speakQuestion = () => {
-    if (!currentQ || !('speechSynthesis' in window)) return;
-
-    if (isSpeaking) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
-      return;
-    }
-
-    const utterance = new SpeechSynthesisUtterance(currentQ.question);
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-
-    window.speechSynthesis.speak(utterance);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!answerText.trim() || isLoading) return;
@@ -212,9 +205,8 @@ export const LiveInterviewRoom: React.FC<Props> = ({
       setInterimText('');
     }
 
-    if (isSpeaking) {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-      setIsSpeaking(false);
     }
 
     const textToSubmit = answerText.trim();
@@ -364,22 +356,11 @@ export const LiveInterviewRoom: React.FC<Props> = ({
                     Est: {currentQ.estimatedTime}
                   </span>
 
-                  {/* Text-to-Speech Button */}
-                  <button
-                    onClick={speakQuestion}
-                    className={`p-1.5 rounded-lg border text-xs transition-colors ${
-                      isSpeaking
-                        ? 'bg-brand-500/20 border-brand-500 text-brand-500 animate-pulse'
-                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
-                    }`}
-                    title={isSpeaking ? 'Stop Audio' : 'Listen to Question'}
-                  >
-                    {isSpeaking ? (
-                      <VolumeX className="w-4 h-4" />
-                    ) : (
-                      <Volume2 className="w-4 h-4" />
-                    )}
-                  </button>
+                  {/* Azure Neural Voice Status Badge */}
+                  <span className="text-[11px] font-mono bg-brand-500/10 text-brand-400 px-2.5 py-1 rounded-md border border-brand-500/20 flex items-center gap-1.5 font-medium">
+                    <Volume2 className="w-3.5 h-3.5 text-brand-400" />
+                    Azure Neural Voice
+                  </span>
                 </div>
               </div>
 
