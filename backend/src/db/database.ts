@@ -1,15 +1,24 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { neon } from '@neondatabase/serverless';
 import { InterviewSession } from '../types/index.js';
 import { config } from '../config/env.js';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+// On Vercel / serverless lambda environments, process.cwd() is read-only.
+// We safely use os.tmpdir() when running under Vercel / serverless.
+const DATA_DIR = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'vaani_data')
+  : path.resolve(process.cwd(), 'data');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 
-// Ensure local data directory exists for fallback
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+// Ensure local data directory exists for fallback safely
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn('Notice: Local data directory could not be created:', err);
 }
 
 class DatabaseService {

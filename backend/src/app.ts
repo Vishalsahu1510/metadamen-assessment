@@ -13,8 +13,8 @@ export const createApp = (): Express => {
   app.use(cors({ origin: '*' }));
   app.use(express.json());
 
-  // Health check endpoint
-  app.get('/api/health', (_req: Request, res: Response) => {
+  // Health check endpoint (support both /api/health and /health)
+  const healthHandler = (_req: Request, res: Response) => {
     res.json({
       status: 'healthy',
       system: 'VAANI™ Adaptive AI Interview & Assessment Intelligence',
@@ -24,11 +24,19 @@ export const createApp = (): Express => {
       database: db.getEngineType(),
       timestamp: new Date().toISOString(),
     });
+  };
+
+  app.get('/api/health', healthHandler);
+  app.get('/health', healthHandler);
+  app.get('/', (_req: Request, res: Response) => {
+    res.json({ status: 'healthy', service: 'vaani-backend' });
   });
 
-  // Mount routers
+  // Mount routers (support both with and without /api prefix for flexible Vercel reverse proxy / services rewrites)
   app.use('/api/sessions', sessionRouter);
+  app.use('/sessions', sessionRouter);
   app.use('/api/audio', audioRouter);
+  app.use('/audio', audioRouter);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {
@@ -46,3 +54,6 @@ export const createApp = (): Express => {
 
   return app;
 };
+
+const app = createApp();
+export default app;
